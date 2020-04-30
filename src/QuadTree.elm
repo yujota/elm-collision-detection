@@ -10,18 +10,17 @@ module QuadTree exposing
     )
 
 import Array exposing (Array)
-import Binary
 import BoundingBox2d exposing (BoundingBox2d)
 import Dict exposing (Dict)
 import QuadTree.Internal.QuadTree as Q
 import Quantity exposing (Quantity)
 
 
-type QuadTree comparable shape units coordinates
+type QuadTree comparable object units coordinates
     = QuadTree
         { toFloat : Quantity Float units -> Float
-        , shapes : Dict comparable { index : Int, shape : shape, boundingBox : BoundingBox2d units coordinates }
-        , linerQuaternaryTree : Array (Array comparable) -- Hashtable for (Morton Order -> Annotation Id)
+        , keyToIndex : Dict comparable { lqt : Int, offset : Int }
+        , objects : Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates })
         , depth : Int
         , unitWidth : Int
         , unitHeight : Int
@@ -52,8 +51,8 @@ quadTree opt =
             ( width // 2 ^ (depth - 1) + 1, height // 2 ^ (depth - 1) + 1 )
     in
     { toFloat = opt.toFloat
-    , shapes = Dict.empty
-    , linerQuaternaryTree = Array.repeat ((4 ^ depth - 1) // 3) Array.empty
+    , keyToIndex = Dict.empty
+    , objects = Array.repeat ((4 ^ depth - 1) // 3) Array.empty
     , depth = depth
     , unitWidth = unitWidth
     , unitHeight = unitHeight
@@ -80,8 +79,8 @@ customQuadTree :
     -> QuadTree comparable shape units coordinates
 customQuadTree opt =
     { toFloat = opt.toFloat
-    , shapes = Dict.empty
-    , linerQuaternaryTree = Array.repeat ((4 ^ opt.depth - 1) // 3) Array.empty
+    , keyToIndex = Dict.empty
+    , objects = Array.repeat ((4 ^ opt.depth - 1) // 3) Array.empty
     , depth = opt.depth
     , unitWidth = opt.unitWidth
     , unitHeight = opt.unitHeight
@@ -96,42 +95,53 @@ customQuadTree opt =
 
 
 detectCollisions :
-    (shape -> shape -> Bool)
-    -> QuadTree comparable shape units coordinates
-    -> List ( comparable, comparable )
+    (object -> object -> Bool)
+    -> QuadTree comparable object units coordinates
+    -> List ( { key : comparable, object : object }, { key : comparable, object : object } )
 detectCollisions checkCollision (QuadTree container) =
-    -- TODO
-    []
-
-
-collideWith :
-    (shape -> Bool)
-    -> BoundingBox2d units coordinates
-    -> QuadTree comparable shape units coordinates
-    -> List ( comparable, shape )
-collideWith checkCollision boundingBox (QuadTree container) =
     let
-        isCollidedWith obj =
-            if BoundingBox2d.intersects boundingBox obj.boundingBox then
-                checkCollision obj.shape
+        check itemA itemB =
+            if BoundingBox2d.intersects itemA.boundingBox itemB.boundingBox then
+                checkCollision itemA.object itemB.object
 
             else
                 False
 
-        getCollided key result =
-            case Dict.get key container.shapes of
-                Just obj ->
-                    if isCollidedWith obj then
-                        ( key, obj.shape ) :: result
+        toResult itemA itemB =
+            ( { key = itemA.key, object = itemA.object }, { key = itemB.key, object = itemB.object } )
 
-                    else
-                        result
+        collect =
+            detectCollisionsLoop
+                { check = check
+                , toResult = toResult
+                , depth = container.depth
+                , objects = container.objects
+                }
+    in
+    Array.foldr collect { index = 0, result = [] } container.objects
+        |> .result
 
-                Nothing ->
+
+collideWith :
+    (object -> Bool)
+    -> BoundingBox2d units coordinates
+    -> QuadTree comparable object units coordinates
+    -> List { key : comparable, object : object }
+collideWith checkCollision boundingBox (QuadTree container) =
+    let
+        getCollided item result =
+            if BoundingBox2d.intersects boundingBox item.boundingBox then
+                if checkCollision item.object then
+                    { key = item.key, object = item.object } :: result
+
+                else
                     result
 
+            else
+                result
+
         collect lqtIndex collidedItems =
-            case Array.get lqtIndex container.linerQuaternaryTree of
+            case Array.get lqtIndex container.objects of
                 Just ary ->
                     Array.foldr getCollided [] ary ++ collidedItems
 
@@ -147,16 +157,16 @@ collideWith checkCollision boundingBox (QuadTree container) =
         , depth = container.depth
         }
         boundingBox
-        |> List.foldl collect []
+        |> List.foldr collect []
 
 
 insert :
     comparable
     -> BoundingBox2d units coordinates
-    -> shape
-    -> QuadTree comparable shape units coordinates
-    -> QuadTree comparable shape units coordinates
-insert key boundingBox shape (QuadTree container) =
+    -> object
+    -> QuadTree comparable object units coordinates
+    -> QuadTree comparable object units coordinates
+insert key boundingBox object (QuadTree container) =
     let
         target =
             BoundingBox2d.extrema boundingBox
@@ -168,35 +178,64 @@ insert key boundingBox shape (QuadTree container) =
                         }
                    )
 
-        newIndex =
-            linerQuaternaryTreeIndex
+        newLqtIndex =
+            Q.linerQuaternaryTreeIndex
                 { depth = container.depth, unitWidth = container.unitWidth, unitHeight = container.unitHeight }
                 target
 
-        newItem =
-            { index = newIndex, boundingBox = boundingBox, shape = shape }
+        newRecord =
+            { key = key, boundingBox = boundingBox, object = object }
     in
-    case Dict.get key container.shapes of
+    case Dict.get key container.keyToIndex of
         Just old ->
-            if old.index == newIndex then
-                { container | shapes = Dict.insert key newItem container.shapes } |> QuadTree
-
-            else
-                { container
-                    | shapes = Dict.insert key newItem container.shapes
-                    , linerQuaternaryTree =
-                        container.linerQuaternaryTree
-                            |> Q.removeLqtIndex old.index key
-                            |> Q.insertLqtIndex newIndex key
-                }
+            if old.lqt == newLqtIndex then
+                { container | objects = updateObject old newRecord container.objects }
                     |> QuadTree
 
+            else
+                let
+                    ( oldRemovedObjects, maybeKeyToRewriteOffset ) =
+                        removeObject old container.objects
+
+                    ( newObjects, maybeNewOffset ) =
+                        addObject newLqtIndex newRecord oldRemovedObjects
+                in
+                case ( maybeNewOffset, maybeKeyToRewriteOffset ) of
+                    ( Just offset, Just ( rKey, rOffset ) ) ->
+                        { container
+                            | objects = newObjects
+                            , keyToIndex =
+                                container.keyToIndex
+                                    |> Dict.insert key { lqt = newLqtIndex, offset = offset }
+                                    |> Dict.insert rKey { lqt = old.lqt, offset = rOffset }
+                        }
+                            |> QuadTree
+
+                    ( Just offset, Nothing ) ->
+                        { container
+                            | objects = newObjects
+                            , keyToIndex = Dict.insert key { lqt = newLqtIndex, offset = offset } container.keyToIndex
+                        }
+                            |> QuadTree
+
+                    _ ->
+                        QuadTree container
+
         Nothing ->
-            { container
-                | shapes = Dict.insert key newItem container.shapes
-                , linerQuaternaryTree = container.linerQuaternaryTree |> Q.insertLqtIndex newIndex key
-            }
-                |> QuadTree
+            let
+                ( newObjects, maybeNewOffset ) =
+                    addObject newLqtIndex newRecord container.objects
+            in
+            case maybeNewOffset of
+                Just offset ->
+                    { container
+                        | objects = newObjects
+                        , keyToIndex = Dict.insert key { lqt = newLqtIndex, offset = offset } container.keyToIndex
+                    }
+                        |> QuadTree
+
+                Nothing ->
+                    QuadTree container
 
 
 remove :
@@ -204,13 +243,26 @@ remove :
     -> QuadTree comparable shape units coordinates
     -> QuadTree comparable shape units coordinates
 remove key (QuadTree container) =
-    case Dict.get key container.shapes of
-        Just data ->
-            { container
-                | shapes = Dict.remove key container.shapes
-                , linerQuaternaryTree = Q.removeLqtIndex data.index key container.linerQuaternaryTree
-            }
-                |> QuadTree
+    case Dict.get key container.keyToIndex of
+        Just index ->
+            let
+                ( newObjects, maybeKeysToRewriteOffset ) =
+                    removeObject index container.objects
+            in
+            case maybeKeysToRewriteOffset of
+                Just ( rKey, rOffset ) ->
+                    { container
+                        | keyToIndex =
+                            container.keyToIndex
+                                |> Dict.insert rKey { lqt = index.lqt, offset = rOffset }
+                                |> Dict.remove key
+                        , objects = newObjects
+                    }
+                        |> QuadTree
+
+                Nothing ->
+                    { container | keyToIndex = container.keyToIndex |> Dict.remove key, objects = newObjects }
+                        |> QuadTree
 
         Nothing ->
             QuadTree container
@@ -218,91 +270,119 @@ remove key (QuadTree container) =
 
 get :
     comparable
-    -> QuadTree comparable shape units coordinates
-    -> Maybe shape
+    -> QuadTree comparable object units coordinates
+    -> Maybe object
 get key (QuadTree container) =
-    Dict.get key container.shapes |> Maybe.map .shape
+    case Dict.get key container.keyToIndex of
+        Just { lqt, offset } ->
+            case Array.get lqt container.objects of
+                Just ary ->
+                    Array.get offset ary |> Maybe.map .object
 
+                Nothing ->
+                    Nothing
 
-getWith :
-    comparable
-    -> QuadTree comparable shape units coordinates
-    -> Maybe shape
-getWith key (QuadTree container) =
-    Dict.get key container.shapes |> Maybe.map .shape
+        Nothing ->
+            Nothing
 
 
 toDict :
-    QuadTree comparable shape units coordinates
-    -> Dict comparable { shape : shape, boundingBox : BoundingBox2d units coordinates }
+    QuadTree comparable object units coordinates
+    -> Dict comparable { object : object, boundingBox : BoundingBox2d units coordinates }
 toDict (QuadTree container) =
-    container.shapes |> Dict.map (\_ r -> { shape = r.shape, boundingBox = r.boundingBox })
+    Array.foldr Array.append Array.empty container.objects
+        |> Array.map (\r -> ( r.key, { object = r.object, boundingBox = r.boundingBox } ))
+        |> Array.toList
+        |> Dict.fromList
 
 
-{-| Calculate liner quaternary tree index. `depth` must be equal or larger than 2.
 
-    bBox = { left = 10, top = 10, right = 15, bottom = 15 }
-    linerQuaternaryTreeIndex { depth = 2, unitWidth = 20, unitHeight = 20 } bBox == 1  -- Number 0 element of Level 1.
+-- Helpers
 
--}
-linerQuaternaryTreeIndex :
-    { depth : Int, unitWidth : Int, unitHeight : Int }
-    -> { left : Float, top : Float, right : Float, bottom : Float }
-    -> Int
-linerQuaternaryTreeIndex { depth, unitWidth, unitHeight } { left, top, right, bottom } =
+
+detectCollisionsLoop :
+    { check : a -> a -> Bool, toResult : a -> a -> b, objects : Array (Array a), depth : Int }
+    -> Array a
+    -> { index : Int, result : List b }
+    -> { index : Int, result : List b }
+detectCollisionsLoop opt items { index, result } =
     let
-        ( topLeft, bottomRight ) =
-            ( Q.quadKey { unitWidth = unitWidth, unitHeight = unitHeight } { x = left, y = top }
-            , Q.quadKey { unitWidth = unitWidth, unitHeight = unitHeight } { x = right, y = bottom }
-            )
-
-        padZeros l =
-            List.repeat (max 0 (2 * (depth - 1) - List.length l)) 0 ++ l
-
-        totalTilesOfUpperLayers : Int -> Int
-        totalTilesOfUpperLayers currentLevel =
-            -- Root Level is 0; Start counting with 0
-            (4 ^ currentLevel - 1) // 3
-
-        pairByLevel : List Int -> List ( Int, Int )
-        pairByLevel l =
-            case l of
-                a :: b :: rest ->
-                    ( a, b ) :: pairByLevel rest
-
-                _ ->
-                    []
-
-        getIndex : List ( Int, ( Int, Int ) ) -> Int
-        getIndex l =
-            case l of
-                ( i, ( a, b ) ) :: [] ->
-                    if a == 0 && b == 0 then
-                        -- When bounding box is contained in most-leaf level tile. ( i + 1 == depth ).
-                        topLeft |> Binary.toDecimal |> (+) (totalTilesOfUpperLayers (i + 1))
-
-                    else
-                        -- When bounding box is contained in (depth - 1) level tile. ( Level == depth - 1 == i ).
-                        Binary.shiftRightZfBy (2 * (depth - i - 1)) topLeft
-                            |> Binary.toDecimal
-                            |> (+) (totalTilesOfUpperLayers i)
-
-                ( i, ( a, b ) ) :: rest ->
-                    if a == 0 && b == 0 then
-                        getIndex rest
-
-                    else
-                        -- When bounding box is contained in i level tile.
-                        Binary.shiftRightZfBy (2 * (depth - i - 1)) topLeft
-                            |> Binary.toDecimal
-                            |> (+) (totalTilesOfUpperLayers i)
-
-                [] ->
-                    0
+        parentToRoot =
+            Q.parentToRootLevelLqtIndices { depth = opt.depth } index
+                |> List.foldr
+                    (\i ary -> Array.append ary (Maybe.withDefault Array.empty (Array.get i opt.objects)))
+                    Array.empty
     in
-    Binary.xor topLeft bottomRight
-        |> Binary.toIntegers
-        |> padZeros
-        |> pairByLevel
-        |> List.indexedMap (\i t -> ( i, t ))
-        |> getIndex
+    { index = index + 1
+    , result = detectCollisionsOfNode { check = opt.check, toResult = opt.toResult } items parentToRoot result
+    }
+
+
+detectCollisionsOfNode : { check : a -> a -> Bool, toResult : a -> a -> b } -> Array a -> Array a -> List b -> List b
+detectCollisionsOfNode opt items parentToRootItems result =
+    let
+        collect itm1 itm2 rlt =
+            if opt.check itm1 itm2 then
+                opt.toResult itm1 itm2 :: rlt
+
+            else
+                rlt
+
+        remains =
+            Array.slice 1 (Array.length items) items
+    in
+    case Array.get 0 items of
+        Just item ->
+            Array.foldr (collect item) result (Array.append remains parentToRootItems)
+                |> detectCollisionsOfNode opt remains parentToRootItems
+
+        Nothing ->
+            result
+
+
+addObject :
+    Int
+    -> { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates }
+    -> Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates })
+    -> ( Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates }), Maybe Int )
+addObject lqt item arrays =
+    case Array.get lqt arrays of
+        Just ary ->
+            ( Array.set lqt (Array.push item ary) arrays, Just (Array.length ary) )
+
+        Nothing ->
+            ( arrays, Nothing )
+
+
+updateObject :
+    { lqt : Int, offset : Int }
+    -> { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates }
+    -> Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates })
+    -> Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates })
+updateObject index item arrays =
+    case Array.get index.lqt arrays of
+        Just ary ->
+            Array.set index.lqt (Array.set index.offset item ary) arrays
+
+        Nothing ->
+            arrays
+
+
+removeObject :
+    { lqt : Int, offset : Int }
+    -> Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates })
+    -> ( Array (Array { key : comparable, object : object, boundingBox : BoundingBox2d units coordinates }), Maybe ( comparable, Int ) )
+removeObject index arrays =
+    case Array.get index.lqt arrays of
+        Just ary ->
+            case Array.get (Array.length ary - 1) ary of
+                Just item ->
+                    ( Array.set index.lqt (Array.set index.offset item (Array.slice 0 -1 ary)) arrays
+                    , Just ( item.key, index.offset )
+                    )
+
+                Nothing ->
+                    ( Array.set index.lqt Array.empty arrays, Nothing )
+
+        Nothing ->
+            ( arrays, Nothing )

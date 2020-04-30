@@ -1,10 +1,8 @@
 module QuadTree.Internal.QuadTree exposing
     ( containedLqtIndices
-    , insertLqtIndex
     , linerQuaternaryTreeIndex
     , parentToRootLevelLqtIndices
     , quadKey
-    , removeLqtIndex
     , truncatedExtrema
     )
 
@@ -165,26 +163,6 @@ toQuadKey { rowId, colId } =
     Binary.or
         (Binary.fromDecimal rowId |> Binary.toIntegers |> List.concatMap (\i -> [ 0, i ]) |> Binary.fromIntegers)
         (Binary.fromDecimal colId |> Binary.toIntegers |> List.concatMap (\i -> [ i, 0 ]) |> Binary.fromIntegers)
-
-
-insertLqtIndex : Int -> comparable -> Array (Array comparable) -> Array (Array comparable)
-insertLqtIndex index k array =
-    case Array.get index array of
-        Just ary ->
-            Array.set index (Array.push k ary) array
-
-        Nothing ->
-            array
-
-
-removeLqtIndex : Int -> comparable -> Array (Array comparable) -> Array (Array comparable)
-removeLqtIndex index k array =
-    case Array.get index array of
-        Just ary ->
-            Array.set index (Array.filter (\ky -> ky /= k) ary) array
-
-        Nothing ->
-            array
 
 
 truncatedExtrema :
