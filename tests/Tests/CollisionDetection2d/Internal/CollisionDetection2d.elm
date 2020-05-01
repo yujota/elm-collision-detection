@@ -1,11 +1,11 @@
-module Tests.QuadTree.Internal.QuadTree exposing (..)
+module Tests.CollisionDetection2d.Internal.CollisionDetection2d exposing (..)
 
 import Binary
 import BoundingBox2d
+import CollisionDetection2d.Internal.CollisionDetection2d as C
 import Expect exposing (equal, equalLists)
 import Pixels
 import Point2d
-import QuadTree.Internal.QuadTree as Q
 import Test exposing (Test, describe, test)
 
 
@@ -15,7 +15,7 @@ testQuadKey =
         testExampleOne () =
             let
                 actual =
-                    Q.quadKey { unitWidth = 13, unitHeight = 13 } { x = 48, y = 80 }
+                    C.quadKey { unitWidth = 13, unitHeight = 13 } { x = 48, y = 80 }
                         |> Binary.toDecimal
 
                 desired =
@@ -35,7 +35,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 10, top = 20, right = 70, bottom = 80 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 2, unitWidth = 100, unitHeight = 100 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 2, unitWidth = 100, unitHeight = 100 } extrema
 
                 desired =
                     1
@@ -48,7 +48,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 10, top = 20, right = 70, bottom = 80 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 2, unitWidth = 50, unitHeight = 50 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 2, unitWidth = 50, unitHeight = 50 } extrema
 
                 desired =
                     0
@@ -61,7 +61,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 55, top = 15, right = 75, bottom = 35 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
 
                 desired =
                     2
@@ -74,7 +74,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 65, top = 25, right = 75, bottom = 35 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
 
                 desired =
                     12
@@ -87,7 +87,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 32, top = 12, right = 37, bottom = 18 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
 
                 desired =
                     28
@@ -100,7 +100,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 35, top = 35, right = 45, bottom = 45 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
 
                 desired =
                     0
@@ -113,7 +113,7 @@ testLinerQuaternaryTreeIndex =
                     { left = 15, top = 65, right = 25, bottom = 65 }
 
                 actual =
-                    Q.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
+                    C.linerQuaternaryTreeIndex { depth = 4, unitWidth = 10, unitHeight = 10 } extrema
 
                 desired =
                     3
@@ -137,7 +137,7 @@ testParentToRootLevelLqtIndices =
         testExampleOne () =
             let
                 actual =
-                    Q.parentToRootLevelLqtIndices { depth = 2 } 0
+                    C.parentToRootLevelLqtIndices { depth = 2 } 0
 
                 desired =
                     []
@@ -147,7 +147,7 @@ testParentToRootLevelLqtIndices =
         testExampleTwo () =
             let
                 actual =
-                    Q.parentToRootLevelLqtIndices { depth = 2 } 1
+                    C.parentToRootLevelLqtIndices { depth = 2 } 1
 
                 desired =
                     [ 0 ]
@@ -157,20 +157,30 @@ testParentToRootLevelLqtIndices =
         testExampleThree () =
             let
                 actual =
-                    Q.parentToRootLevelLqtIndices { depth = 3 } 5
+                    C.parentToRootLevelLqtIndices { depth = 3 } 5
 
                 desired =
-                    [ 1, 0 ]
+                    [ 0, 1 ]
             in
             equalLists actual desired
 
         testExampleFour () =
             let
                 actual =
-                    Q.parentToRootLevelLqtIndices { depth = 4 } 47
+                    C.parentToRootLevelLqtIndices { depth = 4 } 47
 
                 desired =
-                    [ 11, 2, 0 ]
+                    [ 0, 2, 11 ]
+            in
+            equalLists actual desired
+
+        testExampleFive () =
+            let
+                actual =
+                    C.parentToRootLevelLqtIndices { depth = 2 } 4
+
+                desired =
+                    [ 0 ]
             in
             equalLists actual desired
     in
@@ -179,16 +189,27 @@ testParentToRootLevelLqtIndices =
         , test "test Example 2" testExampleTwo
         , test "test Example 3" testExampleThree
         , test "test Example 4" testExampleFour
+        , test "test Example 5" testExampleFive
         ]
 
 
 testContainedLqtIndices : Test
 testContainedLqtIndices =
     let
+        extrema =
+            BoundingBox2d.extrema
+                >> (\r ->
+                        { minX = Pixels.inPixels r.minX
+                        , minY = Pixels.inPixels r.minY
+                        , maxX = Pixels.inPixels r.maxX
+                        , maxY = Pixels.inPixels r.maxY
+                        }
+                   )
+
         testExampleOne () =
             let
                 options =
-                    { toFloat = Pixels.inPixels
+                    { extrema = extrema
                     , truncateX = identity
                     , truncateY = identity
                     , unitWidth = 100
@@ -200,7 +221,7 @@ testContainedLqtIndices =
                     BoundingBox2d.from (Point2d.pixels 10 20) (Point2d.pixels 70 80)
 
                 actual =
-                    Q.containedLqtIndices options boundingBox
+                    C.containedLqtIndices options boundingBox
 
                 desired =
                     [ 0, 1 ]
@@ -210,7 +231,7 @@ testContainedLqtIndices =
         testExampleTwo () =
             let
                 options =
-                    { toFloat = Pixels.inPixels
+                    { extrema = extrema
                     , truncateX = identity
                     , truncateY = identity
                     , unitWidth = 100
@@ -222,7 +243,7 @@ testContainedLqtIndices =
                     BoundingBox2d.from (Point2d.pixels 10 20) (Point2d.pixels 70 80)
 
                 actual =
-                    Q.containedLqtIndices options boundingBox
+                    C.containedLqtIndices options boundingBox
 
                 desired =
                     [ 0, 1, 5 ]
@@ -232,7 +253,7 @@ testContainedLqtIndices =
         testExampleThree () =
             let
                 options =
-                    { toFloat = Pixels.inPixels
+                    { extrema = extrema
                     , truncateX = identity
                     , truncateY = identity
                     , unitWidth = 10
@@ -244,7 +265,7 @@ testContainedLqtIndices =
                     BoundingBox2d.from (Point2d.pixels 15 15) (Point2d.pixels 25 15)
 
                 actual =
-                    Q.containedLqtIndices options boundingBox
+                    C.containedLqtIndices options boundingBox
 
                 desired =
                     [ 0, 1, 2, 8, 11 ]

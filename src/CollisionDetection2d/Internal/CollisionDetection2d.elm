@@ -1,4 +1,4 @@
-module QuadTree.Internal.QuadTree exposing
+module CollisionDetection2d.Internal.CollisionDetection2d exposing
     ( containedLqtIndices
     , linerQuaternaryTreeIndex
     , parentToRootLevelLqtIndices
@@ -6,10 +6,7 @@ module QuadTree.Internal.QuadTree exposing
     , truncatedExtrema
     )
 
-import Array exposing (Array)
 import Binary
-import BoundingBox2d exposing (BoundingBox2d)
-import Quantity exposing (Quantity)
 import Set
 
 
@@ -88,19 +85,19 @@ linerQuaternaryTreeIndex { depth, unitWidth, unitHeight } { left, top, right, bo
 
 
 containedLqtIndices :
-    { toFloat : Quantity Float units -> Float
+    { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , truncateX : Float -> Float
     , truncateY : Float -> Float
     , unitWidth : Int
     , unitHeight : Int
     , depth : Int
     }
-    -> BoundingBox2d units coordinates
+    -> boundingBox
     -> List Int
 containedLqtIndices opt boundingBox =
     let
         { startRow, startCol, endRow, endCol } =
-            truncatedExtrema { toFloat = opt.toFloat, truncateX = opt.truncateX, truncateY = opt.truncateY } boundingBox
+            truncatedExtrema { extrema = opt.extrema, truncateX = opt.truncateX, truncateY = opt.truncateY } boundingBox
                 |> (\r ->
                         { startRow = floor r.left // opt.unitWidth
                         , startCol = floor r.top // opt.unitHeight
@@ -148,14 +145,20 @@ containedLqtIndicesLoop level quadKeys result =
 parentToRootLevelLqtIndices : { depth : Int } -> Int -> List Int
 parentToRootLevelLqtIndices { depth } lqtIndex =
     let
-        bin =
-            Binary.fromDecimal lqtIndex
+        addition lv =
+            (4 ^ lv - 1) // 3
+
+        qKey =
+            (lqtIndex - addition level)
+                |> Binary.fromDecimal
 
         level =
             logBase 4 (3 * lqtIndex + 1 |> toFloat) |> floor
+
+        calcLqtIndex lv =
+            addition lv + (Binary.shiftRightZfBy (2 * (level - lv)) qKey |> Binary.toDecimal)
     in
-    List.range 1 level
-        |> List.map (\i -> Binary.shiftRightZfBy (2 * i) bin |> Binary.toDecimal)
+    List.range 0 (level - 1) |> List.map calcLqtIndex
 
 
 toQuadKey : { rowId : Int, colId : Int } -> Binary.Bits
@@ -166,15 +169,18 @@ toQuadKey { rowId, colId } =
 
 
 truncatedExtrema :
-    { toFloat : Quantity Float units -> Float, truncateX : Float -> Float, truncateY : Float -> Float }
-    -> BoundingBox2d units coordinates
+    { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
+    , truncateX : Float -> Float
+    , truncateY : Float -> Float
+    }
+    -> boundingBox
     -> { left : Float, top : Float, right : Float, bottom : Float }
 truncatedExtrema opt boundingBox =
-    BoundingBox2d.extrema boundingBox
+    opt.extrema boundingBox
         |> (\r ->
-                { left = r.minX |> opt.toFloat |> opt.truncateX
-                , top = r.minY |> opt.toFloat |> opt.truncateY
-                , right = r.maxX |> opt.toFloat |> opt.truncateX
-                , bottom = r.maxY |> opt.toFloat |> opt.truncateY
+                { left = r.minX |> opt.truncateX
+                , top = r.minY |> opt.truncateY
+                , right = r.maxX |> opt.truncateX
+                , bottom = r.maxY |> opt.truncateY
                 }
            )
