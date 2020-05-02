@@ -1,8 +1,9 @@
 module CollisionDetection2d exposing
-    ( Container(..)
+    ( Container
     , quadTree
     , detectCollisions, collideWith
-    , get, insert, remove, size, toDict
+    , get, insert, update, remove, keys, values, size, toDict
+    , map, foldl, foldr, filter
     , naive, customQuadTree
     )
 
@@ -19,14 +20,19 @@ module CollisionDetection2d exposing
 @docs quadTree
 
 
-# CollisionDetection
+# Collision detection
 
 @docs detectCollisions, collideWith
 
 
-# Queries
+# `Dict` like functions
 
-@docs get, insert, remove, size, toDict
+@docs get, insert, update, remove, keys, values, size, toDict
+
+
+# Transform
+
+@docs map, foldl, foldr, filter
 
 
 # For advanced usages
@@ -49,6 +55,7 @@ type Container comparable object boundingBox
     | Naive
         { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
         , intersects : boundingBox -> boundingBox -> Bool
+        , getBoundingBox : object -> boundingBox
         , objects : Dict comparable { object : object, boundingBox : boundingBox }
         }
 
@@ -56,6 +63,7 @@ type Container comparable object boundingBox
 type alias QuadTreeRecord comparable object boundingBox =
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
+    , getBoundingBox : object -> boundingBox
     , keyToIndex : Dict comparable { lqt : Int, offset : Int }
     , objects : Array (Array { key : comparable, object : object, boundingBox : boundingBox })
     , depth : Int
@@ -78,10 +86,11 @@ type alias Boundary =
 quadTree :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
+    , getBoundingBox : object -> boundingBox
     , boundary : Boundary
     }
     -> Container comparable object boundingBox
-quadTree { extrema, intersects, boundary } =
+quadTree { extrema, intersects, getBoundingBox, boundary } =
     let
         ( width, height ) =
             ( boundary.maxX - boundary.minX |> floor, boundary.maxY - boundary.minY |> floor )
@@ -97,6 +106,7 @@ quadTree { extrema, intersects, boundary } =
     in
     { extrema = extrema
     , intersects = intersects
+    , getBoundingBox = getBoundingBox
     , keyToIndex = Dict.empty
     , objects = Array.repeat ((4 ^ depth - 1) // 3) Array.empty
     , depth = depth
@@ -112,16 +122,18 @@ quadTree { extrema, intersects, boundary } =
 customQuadTree :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
+    , getBoundingBox : object -> boundingBox
     , boundary : Boundary
     , depth : Int
     , unitWidth : Int
     , unitHeight : Int
     }
     -> Container comparable object boundingBox
-customQuadTree { extrema, intersects, boundary, depth, unitWidth, unitHeight } =
+customQuadTree { extrema, intersects, getBoundingBox, boundary, depth, unitWidth, unitHeight } =
     if depth >= 2 then
         { extrema = extrema
         , intersects = intersects
+        , getBoundingBox = getBoundingBox
         , keyToIndex = Dict.empty
         , objects = Array.repeat ((4 ^ depth - 1) // 3) Array.empty
         , depth = depth
@@ -134,16 +146,17 @@ customQuadTree { extrema, intersects, boundary, depth, unitWidth, unitHeight } =
             |> QuadTree
 
     else
-        naive { extrema = extrema, intersects = intersects }
+        naive { extrema = extrema, intersects = intersects, getBoundingBox = getBoundingBox }
 
 
 naive :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
+    , getBoundingBox : object -> boundingBox
     }
     -> Container comparable object boundingBox
-naive { extrema, intersects } =
-    Naive { extrema = extrema, intersects = intersects, objects = Dict.empty }
+naive { extrema, intersects, getBoundingBox } =
+    Naive { extrema = extrema, intersects = intersects, getBoundingBox = getBoundingBox, objects = Dict.empty }
 
 
 
@@ -309,7 +322,7 @@ collideWith checkCollision boundingBox cont =
 
         Naive container ->
             let
-                filter ( key, item ) =
+                filterItem ( key, item ) =
                     if container.intersects boundingBox item.boundingBox then
                         if checkCollision item.object then
                             Just { key = key, object = item.object }
@@ -320,7 +333,7 @@ collideWith checkCollision boundingBox cont =
                     else
                         Nothing
             in
-            Dict.toList container.objects |> List.filterMap filter
+            Dict.toList container.objects |> List.filterMap filterItem
 
 
 
@@ -329,19 +342,19 @@ collideWith checkCollision boundingBox cont =
 
 {-| insert
 -}
-insert :
-    comparable
-    -> boundingBox
-    -> object
-    -> Container comparable object boundingBox
-    -> Container comparable object boundingBox
-insert key boundingBox object cont =
+insert : comparable -> object -> Container comparable object boundingBox -> Container comparable object boundingBox
+insert key object cont =
     case cont of
         QuadTree container ->
-            quadTreeInsert key boundingBox object container |> QuadTree
+            quadTreeInsert key (container.getBoundingBox object) object container |> QuadTree
 
         Naive container ->
-            { container | objects = Dict.insert key { boundingBox = boundingBox, object = object } container.objects }
+            { container
+                | objects =
+                    Dict.insert key
+                        { boundingBox = container.getBoundingBox object, object = object }
+                        container.objects
+            }
                 |> Naive
 
 
@@ -415,12 +428,25 @@ quadTreeInsert key boundingBox object container =
                     container
 
 
+{-| update
+-}
+update :
+    comparable
+    -> (Maybe object -> Maybe object)
+    -> Container comparable object boundingBox
+    -> Container comparable object boundingBox
+update key f cont =
+    case get key cont |> f of
+        Just newObj ->
+            insert key newObj cont
+
+        Nothing ->
+            cont
+
+
 {-| remove
 -}
-remove :
-    comparable
-    -> Container comparable object boundingBox
-    -> Container comparable object boundingBox
+remove : comparable -> Container comparable object boundingBox -> Container comparable object boundingBox
 remove key cont =
     case cont of
         QuadTree container ->
@@ -528,17 +554,17 @@ get key cont =
 -}
 toDict :
     Container comparable object boundingBox
-    -> Dict comparable { object : object, boundingBox : boundingBox }
+    -> Dict comparable object
 toDict cont =
     case cont of
         QuadTree container ->
             Array.foldr Array.append Array.empty container.objects
-                |> Array.map (\r -> ( r.key, { object = r.object, boundingBox = r.boundingBox } ))
+                |> Array.map (\r -> ( r.key, r.object ))
                 |> Array.toList
                 |> Dict.fromList
 
         Naive container ->
-            container.objects
+            Dict.map (\_ v -> v.object) container.objects
 
 
 {-| size
@@ -553,3 +579,176 @@ size cont =
 
         Naive container ->
             Dict.size container.objects
+
+
+
+-- lists
+
+
+keys : Container comparable object boundingBox -> List comparable
+keys cont =
+    case cont of
+        QuadTree container ->
+            Dict.keys container.keyToIndex
+
+        Naive container ->
+            Dict.keys container.objects
+
+
+values : Container comparable object boundingBox -> List object
+values cont =
+    case cont of
+        QuadTree container ->
+            Array.foldr
+                (\ary objs -> List.append objs (Array.foldr (\itm l -> itm.object :: l) [] ary))
+                []
+                container.objects
+
+        Naive container ->
+            Dict.values container.objects |> List.map .object
+
+
+
+-- transform
+
+
+map :
+    (comparable -> object -> object)
+    -> Container comparable object boundingBox
+    -> Container comparable object boundingBox
+map f cont =
+    case cont of
+        QuadTree container ->
+            let
+                ( newObjects, newKeyToIndex ) =
+                    quadTreeMap
+                        { extrema = container.extrema
+                        , getBoundingBox = container.getBoundingBox
+                        , depth = container.depth
+                        , unitWidth = container.unitWidth
+                        , unitHeight = container.unitHeight
+                        , truncateX = container.truncateX
+                        , truncateY = container.truncateY
+                        }
+                        f
+                        container.objects
+            in
+            QuadTree { container | objects = newObjects, keyToIndex = newKeyToIndex }
+
+        Naive container ->
+            let
+                g k v =
+                    let
+                        newObject =
+                            f k v.object
+                    in
+                    { object = newObject, boundingBox = container.getBoundingBox newObject }
+            in
+            Naive { container | objects = Dict.map g container.objects }
+
+
+quadTreeMap :
+    { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
+    , getBoundingBox : object -> boundingBox
+    , depth : Int
+    , unitWidth : Int
+    , unitHeight : Int
+    , truncateX : Float -> Float
+    , truncateY : Float -> Float
+    }
+    -> (comparable -> object -> object)
+    -> Array (Array { key : comparable, object : object, boundingBox : boundingBox })
+    -> ( Array (Array { key : comparable, object : object, boundingBox : boundingBox }), Dict comparable { lqt : Int, offset : Int } )
+quadTreeMap opt f objects =
+    let
+        mapItem itm =
+            f itm.key itm.object |> (\o -> { itm | object = o, boundingBox = opt.getBoundingBox o })
+
+        flattenObjects =
+            Array.foldr (\ary objs -> Array.append objs (Array.map mapItem ary)) Array.empty objects
+
+        loop itm ({ keyToIndex, objs } as result) =
+            let
+                newLqtIndex =
+                    itm.boundingBox
+                        |> C.truncatedExtrema
+                            { extrema = opt.extrema
+                            , truncateX = opt.truncateX
+                            , truncateY = opt.truncateY
+                            }
+                        |> C.linerQuaternaryTreeIndex
+                            { depth = opt.depth
+                            , unitWidth = opt.unitWidth
+                            , unitHeight = opt.unitHeight
+                            }
+            in
+            case Array.get newLqtIndex objs of
+                Just ary ->
+                    { keyToIndex = Dict.insert itm.key { lqt = newLqtIndex, offset = Array.length ary } keyToIndex
+                    , objs = Array.set newLqtIndex (Array.push itm ary) objs
+                    }
+
+                Nothing ->
+                    result
+    in
+    Array.foldl loop { keyToIndex = Dict.empty, objs = Array.repeat (Array.length objects) Array.empty } flattenObjects
+        |> (\r -> ( r.objs, r.keyToIndex ))
+
+
+foldl :
+    (comparable -> object -> a -> a)
+    -> a
+    -> Container comparable object boundingBox
+    -> a
+foldl f r cont =
+    toDict cont |> Dict.foldl f r
+
+
+foldr :
+    (comparable -> object -> a -> a)
+    -> a
+    -> Container comparable object boundingBox
+    -> a
+foldr f r cont =
+    toDict cont |> Dict.foldr f r
+
+
+filter :
+    (comparable -> object -> Bool)
+    -> Container comparable object boundingBox
+    -> Container comparable object boundingBox
+filter f cont =
+    case cont of
+        QuadTree container ->
+            let
+                ( newObjects, newKeyToIndex ) =
+                    quadTreeFilter f container.objects
+            in
+            QuadTree { container | objects = newObjects, keyToIndex = newKeyToIndex }
+
+        Naive container ->
+            let
+                g k v =
+                    f k v.object
+            in
+            Naive { container | objects = Dict.filter g container.objects }
+
+
+quadTreeFilter :
+    (comparable -> object -> Bool)
+    -> Array (Array { key : comparable, object : object, boundingBox : boundingBox })
+    -> ( Array (Array { key : comparable, object : object, boundingBox : boundingBox }), Dict comparable { lqt : Int, offset : Int } )
+quadTreeFilter f objects =
+    let
+        loop ary { lqt, keyToIndex, objs } =
+            let
+                newAry =
+                    Array.filter (\o -> f o.key o.object) ary
+
+                indexDict =
+                    Array.toList newAry |> List.indexedMap (\i item -> ( item.key, { lqt = lqt, offset = i } )) |> Dict.fromList
+            in
+            { lqt = lqt + 1, keyToIndex = Dict.union keyToIndex indexDict, objs = Array.push newAry objs }
+    in
+    Array.foldl loop { lqt = 0, keyToIndex = Dict.empty, objs = Array.empty } objects
+        |> (\r -> ( r.objs, r.keyToIndex ))

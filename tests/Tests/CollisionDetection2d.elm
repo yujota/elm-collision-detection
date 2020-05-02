@@ -1,6 +1,5 @@
 module Tests.CollisionDetection2d exposing (..)
 
-import Array
 import BoundingBox2d
 import CollisionDetection2d
 import Expect exposing (equalLists)
@@ -25,9 +24,14 @@ testCollisionDetection =
                     genBoundingBox 20 20 50 50
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
-                        |> CollisionDetection2d.insert 2 bBox2 "def"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 1 bBox1
+                        |> CollisionDetection2d.insert 2 bBox2
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
@@ -50,9 +54,14 @@ testCollisionDetection =
                     genBoundingBox 20 20 50 50
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
-                        |> CollisionDetection2d.insert 2 bBox2 "def"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 1 bBox1
+                        |> CollisionDetection2d.insert 2 bBox2
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
@@ -87,18 +96,23 @@ testCollisionDetectionForEdgeCases =
                     genBoundingBox v v v v
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
-                        |> CollisionDetection2d.insert 2 bBox2 "def"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 1 bBox1
+                        |> CollisionDetection2d.insert 2 bBox2
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
                         |> List.map (\( a, b ) -> sortKey ( a.key, b.key ))
 
                 actualNaive =
-                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
-                        |> CollisionDetection2d.insert 2 bBox2 "def"
+                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
+                        |> CollisionDetection2d.insert 1 bBox1
+                        |> CollisionDetection2d.insert 2 bBox2
                         |> CollisionDetection2d.detectCollisions noCheck
                         |> List.map (\( a, b ) -> sortKey ( a.key, b.key ))
 
@@ -121,8 +135,13 @@ fuzzTestCollisionDetection =
                     genBoundary 0 0 2000 2000
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 0 bBox
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
@@ -139,18 +158,23 @@ fuzzTestCollisionDetection =
                     genBoundary 0 0 2000 2000
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
                         |> List.map (\( a, b ) -> sortKey ( a.key, b.key ))
 
                 desired =
-                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
+                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
                         |> CollisionDetection2d.detectCollisions noCheck
                         |> List.map (\( a, b ) -> sortKey ( a.key, b.key ))
             in
@@ -162,10 +186,15 @@ fuzzTestCollisionDetection =
                     genBoundary 0 0 2000 2000
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
-                        |> CollisionDetection2d.insert 2 bBox3 "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
+                        |> CollisionDetection2d.insert 2 bBox3
 
                 actual =
                     CollisionDetection2d.detectCollisions noCheck container
@@ -173,10 +202,10 @@ fuzzTestCollisionDetection =
                         |> List.sort
 
                 desired =
-                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
-                        |> CollisionDetection2d.insert 2 bBox3 "abc"
+                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
+                        |> CollisionDetection2d.insert 2 bBox3
                         |> CollisionDetection2d.detectCollisions noCheck
                         |> List.map (\( a, b ) -> sortKey ( a.key, b.key ))
                         |> List.sort
@@ -210,8 +239,13 @@ testCollideWith =
                     genBoundingBox 20 20 50 50
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 1 bBox1
 
                 actual =
                     CollisionDetection2d.collideWith (always True) targetArea container
@@ -237,9 +271,14 @@ testCollideWith =
                     genBoundingBox 0 0 90 90
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 1 bBox1 "abc"
-                        |> CollisionDetection2d.insert 2 bBox2 "def"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 1 bBox1
+                        |> CollisionDetection2d.insert 2 bBox2
 
                 actual =
                     CollisionDetection2d.collideWith (always True) targetArea container
@@ -265,8 +304,13 @@ fuzzTestCollideWith =
                     genBoundary 0 0 2000 2000
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 0 bBox
 
                 actual =
                     CollisionDetection2d.collideWith (always True) targetBox container
@@ -274,8 +318,8 @@ fuzzTestCollideWith =
                         |> List.sort
 
                 desired =
-                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox "abc"
+                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
+                        |> CollisionDetection2d.insert 0 bBox
                         |> CollisionDetection2d.collideWith (always True) targetBox
                         |> List.map .key
                         |> List.sort
@@ -288,9 +332,14 @@ fuzzTestCollideWith =
                     genBoundary 0 0 2000 2000
 
                 container =
-                    CollisionDetection2d.quadTree { extrema = extrema, boundary = boundary, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
+                    CollisionDetection2d.quadTree
+                        { extrema = extrema
+                        , boundary = boundary
+                        , intersects = intersects
+                        , getBoundingBox = identity
+                        }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
 
                 actual =
                     CollisionDetection2d.collideWith (always True) targetBox container
@@ -298,9 +347,9 @@ fuzzTestCollideWith =
                         |> List.sort
 
                 desired =
-                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
-                        |> CollisionDetection2d.insert 0 bBox1 "abc"
-                        |> CollisionDetection2d.insert 1 bBox2 "abc"
+                    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
+                        |> CollisionDetection2d.insert 0 bBox1
+                        |> CollisionDetection2d.insert 1 bBox2
                         |> CollisionDetection2d.collideWith (always True) targetBox
                         |> List.map .key
                         |> List.sort
@@ -368,12 +417,3 @@ sortKey ( a, b ) =
 
         GT ->
             ( b, a )
-
-
-printContainer cont =
-    case cont of
-        CollisionDetection2d.QuadTree c ->
-            Array.indexedMap (\i a -> Debug.log "index: " (String.fromInt i ++ " " ++ Debug.toString a)) c.objects
-
-        _ ->
-            Debug.todo "todo"

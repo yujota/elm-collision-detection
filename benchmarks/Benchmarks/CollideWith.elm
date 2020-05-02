@@ -37,16 +37,21 @@ targetArea =
 
 
 insert ( i, bBox ) cnt =
-    CollisionDetection2d.insert i bBox "sample" cnt
+    CollisionDetection2d.insert i bBox cnt
 
 
 naive =
-    CollisionDetection2d.naive { extrema = extrema, intersects = intersects }
+    CollisionDetection2d.naive { extrema = extrema, intersects = intersects, getBoundingBox = identity }
         |> (\c -> List.foldl insert c boxes.result)
 
 
 quadTree =
-    CollisionDetection2d.quadTree { extrema = extrema, intersects = intersects, boundary = boundary }
+    CollisionDetection2d.quadTree
+        { extrema = extrema
+        , intersects = intersects
+        , boundary = boundary
+        , getBoundingBox = identity
+        }
         |> (\c -> List.foldl insert c boxes.result)
 
 
@@ -54,6 +59,7 @@ customQuadTree =
     CollisionDetection2d.customQuadTree
         { extrema = extrema
         , intersects = intersects
+        , getBoundingBox = identity
         , boundary = boundary
         , unitWidth = 128
         , unitHeight = 128
