@@ -7,12 +7,12 @@ module CollisionDetection2d exposing
     , naive, customQuadTree
     )
 
-{-| Collision detection 2D
+{-| Collision detection library for 2D objects.
 
 
 # Types
 
-@docs Container, Boundary
+@docs Container
 
 
 # Constructor
@@ -25,7 +25,7 @@ module CollisionDetection2d exposing
 @docs detectCollisions, collideWith
 
 
-# `Dict` like functions
+# `Dict` like APIs
 
 @docs get, insert, update, remove, keys, values, size, toDict
 
@@ -50,6 +50,9 @@ import Dict exposing (Dict)
 -- Types
 
 
+{-| Representation of a container that stores multiple triads of a key, object, and objects' bounding box.
+The type of key must be comparable.
+-}
 type Container comparable object boundingBox
     = QuadTree (QuadTreeRecord comparable object boundingBox)
     | Naive
@@ -83,11 +86,35 @@ type alias Boundary =
 -- Constructors
 
 
+{-| Construct a container that uses a quadtree algorithm to detect collisions.
+The field `extrema` of the first argument is a function that extracts parameters from a bounding box
+to register an object to each cell of the quadtree.
+The filed `boundary` represents a range of x and y coordinates.
+You can use any type for both `boundingBox` and `object`.
+For instance, if you use ianmackenzi/elm-geometry, the function is called like the following.
+
+    import Circle2d exposing (Circle2d)
+    import BoundingBox2d exposing (BoundingBox2d)
+    import Pixels exposing (inPixels, Pixels)
+
+    extrema =
+        BoundingBox2d.extrema
+        >> (\r -> { minX = inPixels r.minX, minY = inPixels r.minY, maxX = inPixels r.maxX, maxY = inPixels r.maxY })
+
+    quadTree
+        { extrema = extrema
+        , intersects = BoundingBox2d.intersects
+        , getBoundingBox = Circle2d.boundingBox
+        , boundary = { minX = 0, minY = 0, maxX = 200, maxY = 200 }
+        }
+        == Container key (Circle2d Pixels SomeCoordinates) (BoundingBox2d Pixels SomeCoordinates)
+
+-}
 quadTree :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
     , getBoundingBox : object -> boundingBox
-    , boundary : Boundary
+    , boundary : { minX : Float, minY : Float, maxX : Float, maxY : Float }
     }
     -> Container comparable object boundingBox
 quadTree { extrema, intersects, getBoundingBox, boundary } =
@@ -119,17 +146,20 @@ quadTree { extrema, intersects, getBoundingBox, boundary } =
         |> QuadTree
 
 
+{-| You can specify a depth of the quadtree and width and height of most leaf-level cells.
+A value of depth must be equal to or larger than 2.
+-}
 customQuadTree :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
     , getBoundingBox : object -> boundingBox
     , boundary : Boundary
     , depth : Int
-    , unitWidth : Int
-    , unitHeight : Int
+    , cellWidth : Int
+    , cellHeight : Int
     }
     -> Container comparable object boundingBox
-customQuadTree { extrema, intersects, getBoundingBox, boundary, depth, unitWidth, unitHeight } =
+customQuadTree { extrema, intersects, getBoundingBox, boundary, depth, cellWidth, cellHeight } =
     if depth >= 2 then
         { extrema = extrema
         , intersects = intersects
@@ -137,8 +167,8 @@ customQuadTree { extrema, intersects, getBoundingBox, boundary, depth, unitWidth
         , keyToIndex = Dict.empty
         , objects = Array.repeat ((4 ^ depth - 1) // 3) Array.empty
         , depth = depth
-        , unitWidth = unitWidth
-        , unitHeight = unitHeight
+        , unitWidth = cellWidth
+        , unitHeight = cellHeight
         , boundary = boundary
         , truncateX = max boundary.minX >> min boundary.maxX
         , truncateY = max boundary.minY >> min boundary.maxY
@@ -149,6 +179,8 @@ customQuadTree { extrema, intersects, getBoundingBox, boundary, depth, unitWidth
         naive { extrema = extrema, intersects = intersects, getBoundingBox = getBoundingBox }
 
 
+{-| Construct a container that check all combinations of objects to detect collisions.
+-}
 naive :
     { extrema : boundingBox -> { minX : Float, minY : Float, maxX : Float, maxY : Float }
     , intersects : boundingBox -> boundingBox -> Bool
@@ -163,7 +195,30 @@ naive { extrema, intersects, getBoundingBox } =
 -- Collision detection
 
 
-{-| Detect collisions
+{-| Detect collisions.
+A first argument is a function to check a collision with objects.
+
+    circleA =
+        Circle2d.atPoint (Point2d.pixels 80 80) (pixels 15)
+
+    circleB =
+        Circle2d.atPoint (Point2d.pixels 60 60) (pixels 20)
+
+    circleC =
+        Circle2d.atPoint (Point2d.pixels 200 200) (pixels 5)
+
+    container =
+        emptyContainer |> insert "a" circleA |> insert "b" circleB |> insert "c" circleC
+
+    check objA objB =
+        Point2d.equalWithin
+            (Quantity.plus (Circle2d.radius objA) (Circle2d.radius objB))
+            Circle2d.centerPoint objA
+            Circle2d.centerPoint objB
+
+    detectCollisions check container
+            == [ ({ key = "a", object = circleA }, { key = "b", object = circleB } ]
+
 -}
 detectCollisions :
     (object -> object -> Bool)
@@ -279,7 +334,22 @@ detectCollisionsLoopFilter check ( keyA, itemA ) ( keyB, itemB ) =
         Nothing
 
 
-{-| CollideWith
+{-| Return pairs of key and object which satisfy conditions
+that an objects' bounding box share some points with a given bounding box as a second argument
+and a result of a first argument is `True`.
+
+    circleA =
+        Circle2d.atPoint (Point2d.pixels 80 80) (pixels 15)
+
+    circleB =
+        Circle2d.atPoint (Point2d.pixels 60 60) (pixels 20)
+
+    container =
+        emptyContainer |> insert "a" circleA |> insert "b" circleB
+
+    collideWith (Circle2d.centerPoint >> Point2d.equalWithin (pixels 10) (Point2d.pixels 50 50)) someBox container
+        == [ { key = "b", object = circleB } ]
+
 -}
 collideWith :
     (object -> Bool)
@@ -340,7 +410,7 @@ collideWith checkCollision boundingBox cont =
 -- Queries
 
 
-{-| insert
+{-| Insert key and object to a container.
 -}
 insert : comparable -> object -> Container comparable object boundingBox -> Container comparable object boundingBox
 insert key object cont =
@@ -428,7 +498,7 @@ quadTreeInsert key boundingBox object container =
                     container
 
 
-{-| update
+{-| Update an object if it exists.
 -}
 update :
     comparable
@@ -444,7 +514,7 @@ update key f cont =
             cont
 
 
-{-| remove
+{-| Update an object from a container if it exists.
 -}
 remove : comparable -> Container comparable object boundingBox -> Container comparable object boundingBox
 remove key cont =
@@ -528,7 +598,7 @@ quadTreeRemoveObject index arrays =
             ( arrays, Nothing )
 
 
-{-| get item
+{-| Get an object from a container if it exists.
 -}
 get : comparable -> Container comparable object boundingBox -> Maybe object
 get key cont =
@@ -550,7 +620,7 @@ get key cont =
             Dict.get key container.objects |> Maybe.map .object
 
 
-{-| to dict
+{-| Convert a container to a `Dict`
 -}
 toDict :
     Container comparable object boundingBox
@@ -567,7 +637,7 @@ toDict cont =
             Dict.map (\_ v -> v.object) container.objects
 
 
-{-| size
+{-| Returns number of objects a container stores.
 -}
 size :
     Container comparable object boundingBox
@@ -585,6 +655,8 @@ size cont =
 -- lists
 
 
+{-| Get all keys in a container.
+-}
 keys : Container comparable object boundingBox -> List comparable
 keys cont =
     case cont of
@@ -595,6 +667,8 @@ keys cont =
             Dict.keys container.objects
 
 
+{-| Get all objects in a container.
+-}
 values : Container comparable object boundingBox -> List object
 values cont =
     case cont of
@@ -612,6 +686,8 @@ values cont =
 -- transform
 
 
+{-| Apply functions to all objects in a container.
+-}
 map :
     (comparable -> object -> object)
     -> Container comparable object boundingBox
@@ -695,6 +771,8 @@ quadTreeMap opt f objects =
         |> (\r -> ( r.objs, r.keyToIndex ))
 
 
+{-| Foldl. It is equivalent to `toDict |> Dict.foldl`
+-}
 foldl :
     (comparable -> object -> a -> a)
     -> a
@@ -704,6 +782,8 @@ foldl f r cont =
     toDict cont |> Dict.foldl f r
 
 
+{-| Foldr. It is equivalent to `toDict |> Dict.foldr`
+-}
 foldr :
     (comparable -> object -> a -> a)
     -> a
@@ -713,6 +793,8 @@ foldr f r cont =
     toDict cont |> Dict.foldr f r
 
 
+{-| Keep only objects which passed the given test.
+-}
 filter :
     (comparable -> object -> Bool)
     -> Container comparable object boundingBox

@@ -54,8 +54,8 @@ customQuadTree =
         , intersects = intersects
         , getBoundingBox = identity
         , boundary = boundary
-        , unitWidth = 128
-        , unitHeight = 128
+        , cellWidth = 128
+        , cellHeight = 128
         , depth = 3
         }
         |> (\c -> List.foldl insert c boxes)
