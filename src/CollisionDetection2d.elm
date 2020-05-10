@@ -583,16 +583,24 @@ quadTreeRemoveObject :
 quadTreeRemoveObject index arrays =
     case Array.get index.lqt arrays of
         Just ary ->
-            case Array.get (Array.length ary - 1) ary of
-                Just item ->
-                    -- MEMO: The last object's offset index is set to be removed object's offset index.
-                    ( Array.set index.lqt (Array.set index.offset item (Array.slice 0 -1 ary)) arrays
-                    , Just ( item.key, index.offset )
-                    )
+            let
+                lastOffset =
+                    Array.length ary - 1
+            in
+            if index.offset == lastOffset then
+                ( Array.set index.lqt (Array.slice 0 -1 ary) arrays, Nothing )
 
-                Nothing ->
-                    -- MEMO: There is no object other than selected (to remove) object in this lqt cell.
-                    ( Array.set index.lqt Array.empty arrays, Nothing )
+            else
+                case Array.get lastOffset ary of
+                    Just item ->
+                        -- MEMO: The last object's offset index is set to be removed object's offset index.
+                        ( Array.set index.lqt (Array.set index.offset item (Array.slice 0 -1 ary)) arrays
+                        , Just ( item.key, index.offset )
+                        )
+
+                    Nothing ->
+                        -- MEMO: There is no object other than selected (to remove) object in this lqt cell.
+                        ( Array.set index.lqt Array.empty arrays, Nothing )
 
         Nothing ->
             ( arrays, Nothing )
