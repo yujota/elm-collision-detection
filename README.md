@@ -4,8 +4,6 @@ This Elm library provides Quadtree space partitioning data structure for efficie
 
 [Live demo](https://yujota.github.io/elm-collision-detection/)
 
-[Code of live demo](https://github.com/yujota/elm-collision-detection/blob/master/examples/Example.elm)
-
 ![example-demo-image](https://github.com/yujota/elm-collision-detection/blob/master/images/example-demo.gif?raw=true)
 
 ## Overview
@@ -31,96 +29,6 @@ The implementation of Quadtree is capsulated and you don't have to aware of it.
 
 (If you're an expert on this topic and find some problems in this code, please pull-request :D)
 
-
-## How to use
-
-You can use any type for an object and its bounding box to detect collisions, 
-and this library nicely works with `ianmackenzi/elm-geometry` which is a great library to handle geometric data in Elm. 
-For example, here is `MyObject` declaration which has two variants; rectangle and circle.
-
-```elm
-import Circle2d exposing (Circle2d)
-import Rectangle2d exposing (Rectangle2d)
-import Pixels exposing (Pixels, inPixels)
-import Point2d
-
-
-type MyObject 
-    = RectObject (Rectangle2d Pixels MyCoordinates)
-    | CircleObject (Circle2d Pixels MyCoordinates)
-```
-
-You need to define a function that checks two objects have collided or not.
-Also, it is required to have those three functions; 
-
- - `extrema : boundingBox -> { minX : Float, minY : Float, maxX: Float, maxY : Float}`
- - `intersects : boundingBox -> boundingBox -> Bool`
- - `getBoundingBox : object -> boundingBox`
-
-```elm
-check : MyObject -> MyObject -> Bool
-check objA objB = 
-    case (objA, objB) of
-        (CircleObject circleA, CircleObject circleB) ->
-                Point2d.equalWithin
-                    (Quantity.plus (Circle2d.radius circleA) (Circle2d.radius circleB))
-                    Circle2d.centerPoint circleA
-                    Circle2d.centerPoint circleB
-
-        (RectObject rectA, RectObject rectB) ->
-                ...
-
-
-        (RectObject rect, CircleObject circle) ->
-                ...
-
-
-        (CircleObject _, RectObject _) ->
-                check objB objA
-
-
-extrema : BoundingBox2d Pixels MyCoordinates -> { minX : Float, minX : Float, maxX : Float, maxY : Float }
-extrema =
-    BoundingBox2d.extrema
-        >> (\r -> { minX = inPixels r.minX, minY = inPixels r.minY, maxX = inPixels r.maxX, maxY = inPixels r.maxY })
-
-
-intersects : BoundingBox2d Pixels MyCoordinates -> BoundingBox2d Pixels MyCoordinates -> Bool
-intersects = 
-    BoundingBox2d.intersects
-
-
-getBoundingBox : MyObject -> BoundingBox2d Pixels MyCoordinates
-getBoundingBox obj = 
-    case obj of
-        RectObject rect ->
-            Rectangle2d.boundingBox circle
-
-        CircleObject circle ->
-            Circle2d.boundingBox circle
-```
-
-Then,  you can create a container that uses QuadTree and register objects to it. 
-Finally, collided objects are acquired with `CollisionDetection2d.detectCollisions` function.
-
-```elm
-container : CollisionDetection2d String MyObject (BoundingBox2d Pixels MyCoordinates)
-container = CollisionDetection2d.quadTree 
-    { extrema = extrema
-    , intersects = intersects
-    , getBoundingBox = getBoundingBox
-    , boundary = { minX = 0, minY = 0, maxX = 200, maxY = 200 }
-    }
-    |> CollisionDetection2d.insert "sampleA" sampleA
-    |> CollisionDetection2d.insert "sampleB" sampleB
-    |> CollisionDetection2d.insert "sampleC" sampleC
-
-
-
-collidedObjects : List ( { key : String, object : MyObject }, { key : String, object : MyObject } )
-collidedObjects =
-    CollisionDetection2d.detectCollisions check container
-```
 
 ## Performance
 
