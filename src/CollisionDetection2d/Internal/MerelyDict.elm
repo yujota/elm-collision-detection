@@ -2,6 +2,7 @@ module CollisionDetection2d.Internal.MerelyDict exposing
     ( Container
     , detect
     , empty
+    , fromDict
     , get
     , insert
     , map

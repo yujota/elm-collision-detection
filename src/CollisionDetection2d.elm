@@ -149,7 +149,7 @@ fromDict dataStructure constraint d =
             FixedDepthTree2d (FixedDepthTree2d.fromDict depth constraint d)
 
         MerelyDictStructure ->
-            MerelyDict (MerelyDict.empty { isCollided = constraint.isCollided })
+            MerelyDict (MerelyDict.fromDict { isCollided = constraint.isCollided } d)
 
 
 
