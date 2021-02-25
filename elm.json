@@ -3,7 +3,7 @@
     "name": "yujota/elm-collision-detection",
     "summary": "Quadtree space partitioning for collision detection.",
     "license": "BSD-3-Clause",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "exposed-modules": [
         "CollisionDetection2d"
     ],
