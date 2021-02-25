@@ -1,0 +1,60 @@
+html {
+    height: 100vh
+}
+
+body {
+    height: 100vh;
+    width: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: hidden
+}
+
+.elm-div {
+    height: 100vh;
+    margin: 0;
+    padding: 0
+}
+
+.canvas-display {
+    height: calc(100vh - 60px);
+    width: 100vw;
+    margin: 0;
+    padding: 0
+}
+
+.button-group {
+    height: 61px;
+    width: 100vw;
+    background: whitesmoke;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.button-group button {
+    padding: 0.3em 1em;
+    font-size: 18px;
+    height: 40px;
+    width: 140px;
+    text-decoration: none;
+    border: solid 2px #67c5ff;
+    border-radius: 3px;
+    transition: .4s;
+}
+
+.button-group  :first-child{
+    margin-right: 2em;
+}
+
+
+.button-active  {
+    background: #67c5ff;
+    color: white;
+
+}
+
+.button-inactive  {
+    color: #67c5ff;
+}
